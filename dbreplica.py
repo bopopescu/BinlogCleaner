@@ -77,12 +77,30 @@ class DBReplicaController():
         query = session.query(DBReplica)
         dbreplica = query.get(replica_id)
         if dbreplica is not None:
-            slaves = set(json.loads(dbreplica.slaves))
+            if dbreplica.slaves is None or len(dbreplica.slaves) == 0:
+                slaves = set([])
+            else:
+                slaves = set(json.loads(dbreplica.slaves))
             slaves.add(slave_id)
             dbreplica.slaves = json.dumps(list(slaves))
             session.commit()
         session.close()
-    
+        
+    def add_slaves(self, replica_id, slave_ids):
+        session = self.persistence.session()
+        query = session.query(DBReplica)
+        dbreplica = query.get(replica_id)
+        if dbreplica is not None:
+            if dbreplica.slaves is None or len(dbreplica.slaves) == 0:
+                slaves = set([])
+            else:
+                slaves = set(json.loads(dbreplica.slaves))
+            for slave_id in slave_ids:
+                slaves.add(slave_id)
+            dbreplica.slaves = json.dumps(list(slaves))
+            session.commit()
+        session.close()
+            
     def del_slave(self, replica_id, slave_id):
         session = self.persistence.session()
         query = session.query(DBReplica)

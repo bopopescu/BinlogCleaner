@@ -5,6 +5,7 @@ Created on 2011-12-9
 '''
 
 import os
+import json
 import logging.config
 
 import cherrypy
@@ -105,8 +106,10 @@ class BinlogCleaner():
     @cherrypy.expose
     @Helper.restful
     def dbreplica_add_slave(self, replica_id, slave_id):
-        if not self.workers.has_key(id):
+        if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
+        elif self.dbinstance_controller.get(slave_id) is None:
+            raise Exception("no %s slave instance" % slave_id)
         else:        
             self.dbreplica_controller.add_slave(replica_id, slave_id)
             self.workers[replica_id].stop()
@@ -115,6 +118,24 @@ class BinlogCleaner():
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"
+        
+    @cherrypy.expose
+    @Helper.restful
+    def dbreplica_add_slaves(self, replica_id, slave_ids):
+        if not self.workers.has_key(replica_id):
+            raise Exception("replication not exist")
+        else:
+            slaves = json.loads(slave_ids)
+            for slave_id in slaves:
+                if self.dbinstance_controller.get(slave_id) is None:
+                    raise Exception("no %s slave instance" % slave_id)
+            self.dbreplica_controller.add_slaves(replica_id,slaves)
+            self.workers[replica_id].stop()
+            worker = ReplicaWorker(self.persistence, 
+                                   self.dbreplica_controller.get(replica_id))
+            worker.start()
+            self.workers[replica_id] = worker            
+            return "ok"        
 
     @cherrypy.expose
     @Helper.restful

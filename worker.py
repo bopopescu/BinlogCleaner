@@ -30,7 +30,10 @@ class ReplicaWorker(threading.Thread):
     
     def _init_replica(self):
         master_id = self.dbreplica.master
-        slave_ids = json.loads(self.dbreplica.slaves)
+        if self.dbreplica.slaves is None or len(self.dbreplica.slaves) == 0:
+            slave_ids = []
+        else:
+            slave_ids = json.loads(self.dbreplica.slaves)
         master = self.dbinstance_controller.get(master_id)
         if master is None:
             raise ReplicaWorkerException("no master %s record" % master_id)
@@ -63,36 +66,55 @@ class ReplicaWorker(threading.Thread):
     def _target_master_binlog(self, earliest_slave_binlog):
         slave_binlog_index = earliest_slave_binlog[0]
         master_binlogs = self.master_handler.binlogs_sorted()
-        for i in range(len(master_binlogs)):
+        binlog_length = len(master_binlogs)
+        for i in range(binlog_length):
             master_binlog_index = master_binlogs[i][0]
             if slave_binlog_index == master_binlog_index:
                 binlog_window = self.dbreplica.binlog_window
                 if i > binlog_window:
-                    return (False, master_binlogs[i-binlog_window])
+                    return (False, 
+                            master_binlogs[i - binlog_window],
+                            master_binlogs[0],
+                            master_binlogs[binlog_length - 1])
                 else:
-                    return (True, master_binlogs[0])
+                    return (True, 
+                            None,
+                            master_binlogs[0],
+                            master_binlogs[binlog_length - 1])
         raise ReplicaWorkerException("slave binary log not" +
                                      " in master binary logs")
     
     def _do_purge(self):
-        slave_binlog = self._earliest_slave_binlog()
-        (skip, master_binlog) = self._target_master_binlog(slave_binlog)
-        if not skip:
-            self.logger.info(("start purging, " +
-                              "earliest slave binary log %s, " +
-                              "target master binary log %s") %
-                             (slave_binlog[1], 
-                              master_binlog[1]))
-            self.master_handler.purge(master_binlog[1])
-            self.logger.info("binary log successfully purged")
+        if len(self.slaves) <= 0:
+            self.logger.info("skip purge, no slave")
         else:
-            self.logger.info(("skip purge, "+
-                              "earliest slave binary log %s, "+
-                              "earliest master binary log %s, "+
-                              "binary log window size %s") %
-                             (slave_binlog[1],
-                              master_binlog[1],
-                              self.dbreplica.binlog_window))
+            slave_binlog = self._earliest_slave_binlog()
+            (skip, 
+             target_master_binlog,
+             earliest_master_binlog,
+             latest_master_binlog) = self._target_master_binlog(slave_binlog)
+            if not skip:
+                self.logger.info(("start purging, " +
+                                  "earliest slave binary log %s, " +
+                                  "earliest master binary log %s, " +
+                                  "lateset master binary log %s, " +
+                                  "target master binary log %s") %
+                                 (slave_binlog[1], 
+                                  earliest_master_binlog[1],
+                                  latest_master_binlog[1],
+                                  target_master_binlog[1]))
+                self.master_handler.purge(target_master_binlog[1])
+                self.logger.info("binary log successfully purged")
+            else:
+                self.logger.info(("skip purge, "+
+                                  "earliest slave binary log %s, " +
+                                  "earliest master binary log %s, " +
+                                  "latest master binary log %s, " +
+                                  "binary log window size %s") %
+                                 (slave_binlog[1],
+                                  earliest_master_binlog[1],                                  
+                                  latest_master_binlog[1],
+                                  self.dbreplica.binlog_window))
     def purge(self):
         if not self.lock.acquire(False):
             raise ReplicaWorkerException("another purge is running")
@@ -111,7 +133,10 @@ class ReplicaWorker(threading.Thread):
         return self.master_handler.status()
     
     def slave_status(self, slave_id):
-        return self.slaves_handler[slave_id].status()
+        if self.slaves.has_key(slave_id):
+            return self.slaves_handler[slave_id].status()
+        else:
+            raise ReplicaWorkerException("no such slave")
         
     def stop(self):
         self.lock.acquire()
@@ -131,9 +156,6 @@ class ReplicaWorker(threading.Thread):
                     self.lock.release()
                     self.logger.error("run purge error: %s" % str(e))
             else:
-                self.master_handler.close()
-                for slave_id in self.slaves_handler.keys():
-                    self.slaves_handler[slave_id].close()
                 self.logger.info("worker %s stopped" % self.dbreplica.id)                
                 break
 
@@ -142,16 +164,16 @@ class ReplicaMasterHandler():
     
     def __init__(self, master):
         self.master = master
-        self._init_connect()
-    
-    def _init_connect(self):
-        self.connect = MySQLdb.connect(host = self.master.host,
-                                       port = self.master.port,
-                                       user = self.master.user,
-                                       passwd = self.master.passwd)
+        
+    def _get_connect(self):
+        return MySQLdb.connect(host = self.master.host,
+                               port = self.master.port,
+                               user = self.master.user,
+                               passwd = self.master.passwd)        
     
     def binlogs_sorted(self):
-        cursor = self.connect.cursor(MySQLdb.cursors.DictCursor)
+        connect = self._get_connect()
+        cursor = connect.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("show binary logs")
         rows = cursor.fetchall()
         unsorted_binlogs = {}
@@ -160,62 +182,65 @@ class ReplicaMasterHandler():
             log_index = int(log_name[log_name.rfind(".")+1:len(log_name)])
             unsorted_binlogs[log_index] = log_name
         cursor.close()
+        connect.close()
         return sorted(unsorted_binlogs.iteritems())
     
     def binlogs(self):
-        cursor = self.connect.cursor(MySQLdb.cursors.DictCursor)
+        connect = self._get_connect()
+        cursor = connect.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("show binary logs")
         rows = cursor.fetchall()
         cursor.close()
+        connect.close()
         return rows    
     
     def status(self):
-        cursor = self.connect.cursor(MySQLdb.cursors.DictCursor)
+        connect = self._get_connect()
+        cursor = connect.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("show master status")
         row = cursor.fetchone()
         cursor.close()
+        connect.close()
         return row
         
     
     def purge(self, binlog):
-        cursor = self.connect.cursor()
+        connect = self._get_connect()
+        cursor = connect.cursor()
         cursor.execute("purge binary logs to '%s'" % binlog)
         cursor.close()
-        
-    
-    def close(self):
-        self.connect.close()
+        connect.close()
         
 class ReplicaSlaveHandler():
     
     def __init__(self, slave):
         self.slave = slave
-        self._init_connect()
     
-    def _init_connect(self):
-        self.connect = MySQLdb.connect(host = self.slave.host,
-                                       port = self.slave.port,
-                                       user = self.slave.user,
-                                       passwd = self.slave.passwd)
+    def _get_connect(self):
+        return MySQLdb.connect(host = self.slave.host,
+                               port = self.slave.port,
+                               user = self.slave.user,
+                               passwd = self.slave.passwd)
     
     def master_binlog(self):
-        cursor = self.connect.cursor(MySQLdb.cursors.DictCursor)
+        connect = self._get_connect()
+        cursor = connect.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("show slave status")
         row = cursor.fetchone()
         log_name = row['Master_Log_File']
         log_index = int(log_name[log_name.rfind(".")+1:len(log_name)])
         cursor.close()
+        connect.close()
         return (log_index, log_name)
     
     def status(self):
-        cursor = self.connect.cursor(MySQLdb.cursors.DictCursor)
+        connect = self._get_connect()
+        cursor = connect.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("show slave status")
         row = cursor.fetchone()
         cursor.close()
+        connect.close()
         return row
-    
-    def close(self):
-        self.connect.close()
     
 
 class ReplicaWorkerException(Exception):
