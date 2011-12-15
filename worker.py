@@ -95,10 +95,10 @@ class ReplicaWorker(threading.Thread):
              latest_master_binlog) = self._target_master_binlog(slave_binlog)
             if not skip:
                 self.logger.info(("start purging, " +
-                                  "earliest slave binary log %s, " +
-                                  "earliest master binary log %s, " +
-                                  "lateset master binary log %s, " +
-                                  "target master binary log %s") %
+                                  "earliest_slave_binlog %s, " +
+                                  "earliest_master_binlog %s, " +
+                                  "lateset_master_binlog %s, " +
+                                  "target_master_binlog %s") %
                                  (slave_binlog[1], 
                                   earliest_master_binlog[1],
                                   latest_master_binlog[1],
@@ -107,10 +107,10 @@ class ReplicaWorker(threading.Thread):
                 self.logger.info("binary log successfully purged")
             else:
                 self.logger.info(("skip purge, "+
-                                  "earliest slave binary log %s, " +
-                                  "earliest master binary log %s, " +
-                                  "latest master binary log %s, " +
-                                  "binary log window size %s") %
+                                  "earliest_slave_binlog %s, " +
+                                  "earliest_master_binlog %s, " +
+                                  "latest_master_binlog %s, " +
+                                  "binlog_window %s") %
                                  (slave_binlog[1],
                                   earliest_master_binlog[1],                                  
                                   latest_master_binlog[1],
