@@ -10,8 +10,7 @@ import ConfigParser
 from singleton import Singleton
 
 class CleanerConfig(Singleton):
-    
-    DEFAULT_CHECK_PERIOD = 300
+
     DEFAULT_PERSISTENCE_PATH = "db/persistence.db"
     
     def __init__(self):
@@ -26,17 +25,6 @@ class CleanerConfig(Singleton):
         if len(argument) == 0:
             return True
         return False
-    
-    @property
-    def check_period(self):
-        try:
-            attr = self.parser.get("global", "check_period")
-            if not self._check_empty_string(attr):
-                return int(attr)
-            else:
-                return CleanerConfig.DEFAULT_CHECK_PERIOD
-        except:
-            return CleanerConfig.DEFAULT_CHECK_PERIOD
         
     @property
     def persistence_path(self):
