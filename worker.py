@@ -11,8 +11,8 @@ import time
 
 import MySQLdb
 
-from dbreplica import DBReplicaController
-from dbinstance import DBInstanceController
+from controller import DBReplicaController
+from controller import DBInstanceController
 
 class ReplicaWorker(threading.Thread):
     

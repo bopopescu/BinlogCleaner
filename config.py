@@ -7,9 +7,8 @@ Created on 2011-12-12
 import logging
 import ConfigParser
 
-from singleton import Singleton
 
-class CleanerConfig(Singleton):
+class CleanerConfig():
 
     DEFAULT_PERSISTENCE_PATH = "db/persistence.db"
     

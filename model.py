@@ -1,5 +1,5 @@
 '''
-Created on 2011-12-9
+Created on 2011-12-21
 
 @author: frank
 '''
@@ -38,40 +38,28 @@ class DBInstance(ORMBase):
         self.port = dbinstance.port
         self.user = dbinstance.user
         self.passwd = dbinstance.passwd
-    
 
-class DBInstanceController():
+class DBReplica(ORMBase):
     
-    def __init__(self, persistence):
-        self.persistence = persistence
-        
-    def get(self, id):
-        session = self.persistence.session()
-        query = session.query(DBInstance)
-        dbinstance = query.get(id)
-        session.expunge_all()
-        session.close()
-        return dbinstance
+    __tablename__ = "dbreplicas"
+    id = sqlalchemy.Column(sqlalchemy.String(64), 
+                           nullable=False,
+                           unique=True, 
+                           primary_key=True)
+    master = sqlalchemy.Column(sqlalchemy.String(64),
+                               nullable = False)
+    slaves = sqlalchemy.Column(sqlalchemy.Text,
+                               nullable=False)
+    check_period = sqlalchemy.Column(sqlalchemy.Integer,
+                                     nullable=False)
+    binlog_window = sqlalchemy.Column(sqlalchemy.Integer,
+                                     nullable=False)
     
-    def add(self, dbinstance):
-        session = self.persistence.session()
-        session.add(dbinstance)
-        session.commit()
-        session.close()
-    
-    def update(self, dbinstance):
-        session = self.persistence.session()
-        query = session.query(DBInstance)
-        old = query.get(dbinstance.id)
-        old.update(dbinstance)
-        session.commit()
-        session.close()
-        
-    def delete(self, id):
-        session = self.persistence.session()
-        query = session.query(DBInstance)
-        dbinstance = query.get(id)
-        if dbinstance is not None:
-            session.delete(dbinstance)
-            session.commit()
-        session.close()
+    def __init__(self, id, master, slaves, 
+                 check_period = 300,
+                 binlog_window = 0):
+        self.id = id
+        self.master = master
+        self.slaves = slaves
+        self.check_period = check_period
+        self.binlog_window = binlog_window

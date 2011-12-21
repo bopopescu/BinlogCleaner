@@ -7,14 +7,13 @@ Created on 2011-12-9
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 
-from config import CleanerConfig
 
 ORMBase = sqlalchemy.ext.declarative.declarative_base()
 
 class Persistence():
     
-    def __init__(self):
-        self.config = CleanerConfig()
+    def __init__(self, config):
+        self.config = config
         self.engine = sqlalchemy.create_engine(self._connect_url(),
                                                echo=True)
         self._init_session()
