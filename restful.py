@@ -25,21 +25,25 @@ class DBInstanceRestful():
         
     @cherrypy.expose
     @Helper.restful
-    def add(self, id, host, port=3306, user="root", passwd=""):
+    def add(self, id, host, port=3306, user="root", passwd="", 
+            data_dir="/var/lib/mysql"):
         if self.controller.get(id) is not None:
             raise Exception("duplicate instance")
         else:
-            dbinstance = DBInstance(id, host, int(port), user, passwd)
+            dbinstance = DBInstance(id, host, int(port), user, 
+                                    passwd, data_dir)
             self.controller.add(dbinstance)
             return "ok"
 
     @cherrypy.expose
     @Helper.restful
-    def update(self, id, host, port=3306, user="root", passwd=""):
+    def update(self, id, host, port=3306, user="root", passwd="",
+               data_dir="/var/lib/mysql"):
         if self.controller.get(id) is None:
             raise Exception("instance not exist")
         else:
-            dbinstance = DBInstance(id, host, int(port), user, passwd)
+            dbinstance = DBInstance(id, host, int(port), user, 
+                                    passwd, data_dir)
             self.controller.update(dbinstance)
             return "ok"    
         
@@ -67,6 +71,7 @@ class DBReplicaRestful():
         self.config = config
         self.persistence = persistence
         self.controller = DBReplicaController(persistence)
+        self.dbinstance_controller = DBInstanceController(persistence)
         self._init_worker()
         
     def _init_worker(self):
@@ -80,7 +85,7 @@ class DBReplicaRestful():
     @cherrypy.expose
     @Helper.restful
     def add(self, replica_id, master, slaves, 
-                      check_period=300, binlog_window=0):
+                      check_period=60, binlog_window=0):
         if self.workers.has_key(replica_id):
             raise Exception("duplicate replication")
         else:

@@ -23,14 +23,18 @@ class DBInstance(ORMBase):
                              nullable=False)
     passwd = sqlalchemy.Column(sqlalchemy.Text,
                                nullable=False)
+    data_dir = sqlalchemy.Column(sqlalchemy.Text,
+                                 nullable=False)
 
     def __init__(self, id, host, port=3306,
-                 user='root', passwd=''):
+                 user='root', passwd='',
+                 data_dir='/var/lib/mysql'):
         self.id = id
         self.host = host
         self.port = port
         self.user = user
         self.passwd = passwd
+        self.data_dir = data_dir
     
     def update(self, dbinstance):
         self.id = dbinstance.id
@@ -38,6 +42,7 @@ class DBInstance(ORMBase):
         self.port = dbinstance.port
         self.user = dbinstance.user
         self.passwd = dbinstance.passwd
+        self.data_dir = dbinstance.data_dir
 
 class DBReplica(ORMBase):
     
@@ -56,7 +61,7 @@ class DBReplica(ORMBase):
                                      nullable=False)
     
     def __init__(self, id, master, slaves, 
-                 check_period = 300,
+                 check_period = 60,
                  binlog_window = 0):
         self.id = id
         self.master = master
