@@ -107,10 +107,10 @@ class ReplicaWorker(threading.Thread):
                               master_binlogs[binlog_length-1][1],
                               binlog_window))
     
-    def _do_purge(self):
-        if len(self.slaves) <= 0 and self.dbreplica.no_slave_purge == 0:
+    def _do_purge(self, no_slave_purge):
+        if len(self.slaves) <= 0 and no_slave_purge == 0:
             self.logger.info("skip purge, no slave")
-        elif len(self.slaves) <= 0 and self.dbreplica.no_slave_purge != 0:
+        elif len(self.slaves) <= 0 and no_slave_purge != 0:
             self._do_no_slave_purge()    
         else:
             slave_binlog = self._earliest_slave_binlog()
@@ -146,7 +146,7 @@ class ReplicaWorker(threading.Thread):
             raise ReplicaWorkerException("another purge is running")
         else:
             try:
-                self._do_purge()
+                self._do_purge(1)
                 self.lock.release()
             except Exception as e:
                 self.lock.release()
@@ -176,7 +176,7 @@ class ReplicaWorker(threading.Thread):
             if not self.stopped:
                 self.lock.acquire()
                 try:
-                    self._do_purge()
+                    self._do_purge(self.dbreplica.no_slave_purge)
                     self.lock.release()
                 except Exception as e:
                     self.lock.release()
