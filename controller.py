@@ -140,3 +140,12 @@ class DBReplicaController():
             dbreplica.binlog_window = binlog_window
             session.commit()
         session.close()
+        
+    def update_no_slave_purge(self, replica_id, no_slave_purge):
+        session = self.persistence.session()
+        query = session.query(DBReplica)
+        dbreplica = query.get(replica_id)
+        if dbreplica is not None:
+            dbreplica.no_slave_purge = no_slave_purge
+            session.commit()
+        session.close()       

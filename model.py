@@ -59,12 +59,16 @@ class DBReplica(ORMBase):
                                      nullable=False)
     binlog_window = sqlalchemy.Column(sqlalchemy.Integer,
                                      nullable=False)
+    no_slave_purge = sqlalchemy.Column(sqlalchemy.Integer,
+                                       nullable=False)
     
     def __init__(self, id, master, slaves, 
                  check_period = 60,
-                 binlog_window = 0):
+                 binlog_window = 0,
+                 no_slave_purge = 1):
         self.id = id
         self.master = master
         self.slaves = slaves
         self.check_period = check_period
         self.binlog_window = binlog_window
+        self.no_slave_purge = no_slave_purge

@@ -84,9 +84,34 @@ class ReplicaWorker(threading.Thread):
         raise ReplicaWorkerException("slave binary log not" +
                                      " in master binary logs")
     
+    def _do_no_slave_purge(self):
+        master_binlogs = self.master_handler.binlogs_sorted()
+        binlog_window = self.dbreplica.binlog_window
+        binlog_length = len(master_binlogs)
+        if binlog_window + 1 < binlog_length:
+            target_binlog = master_binlogs[binlog_length-binlog_window-1]
+            self.logger.info(("start no slave purging, " +
+                              "earliest_master_binlog %s, " +
+                              "target_master_binlog %s, " +
+                              "latest_master_binlog %s") %
+                             (master_binlogs[0][1],
+                              target_binlog[1],
+                              master_binlogs[binlog_length-1][1]))
+            self.master_handler.purge(target_binlog[1])
+        else:
+            self.logger.info(("skip no slave purging, " +
+                              "earliest_master_binlog %s, " +
+                              "latest_master_binlog %s, " +
+                              "binlog window %s") %
+                             (master_binlogs[0][1],
+                              master_binlogs[binlog_length-1][1],
+                              binlog_window))
+    
     def _do_purge(self):
-        if len(self.slaves) <= 0:
+        if len(self.slaves) <= 0 and self.dbreplica.no_slave_purge == 0:
             self.logger.info("skip purge, no slave")
+        elif len(self.slaves) <= 0 and self.dbreplica.no_slave_purge != 0:
+            self._do_no_slave_purge()    
         else:
             slave_binlog = self._earliest_slave_binlog()
             (skip, 
@@ -115,6 +140,7 @@ class ReplicaWorker(threading.Thread):
                                   earliest_master_binlog[1],                                  
                                   latest_master_binlog[1],
                                   self.dbreplica.binlog_window))
+    
     def purge(self):
         if not self.lock.acquire(False):
             raise ReplicaWorkerException("another purge is running")
