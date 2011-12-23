@@ -25,9 +25,9 @@ do_version_check() {
 
 
 python_version=`python -V 2>&1 | awk '{print $2}'`
+python_cmd="python"
 do_version_check $python_version "2.6"
 
-python_cmd="python"
 
 if [ $? == 9 ]
 then
