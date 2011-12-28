@@ -36,13 +36,15 @@ class ReplicaWorker(threading.Thread):
             slave_ids = json.loads(self.dbreplica.slaves)
         master = self.dbinstance_controller.get(master_id)
         if master is None:
-            raise ReplicaWorkerException("no master %s record" % master_id)
+            raise ReplicaWorkerException("%s no master %s record" % 
+                                         (self.dbreplica.id, master_id))
         self.master = master
         self.slaves = {}
         for slave_id in slave_ids:
             slave = self.dbinstance_controller.get(slave_id)
             if slave is None:
-                raise ReplicaWorkerException("no slave %s record" % slave_id)
+                raise ReplicaWorkerException("%s no slave %s record" % 
+                                             (self.dbreplica.id, slave_id))
             self.slaves[slave_id] = slave
     
     def _init_handler(self):
@@ -81,8 +83,9 @@ class ReplicaWorker(threading.Thread):
                             None,
                             master_binlogs[0],
                             master_binlogs[binlog_length - 1])
-        raise ReplicaWorkerException("slave binary log not" +
-                                     " in master binary logs")
+        raise ReplicaWorkerException("%s slave binary log not" +
+                                     " in master binary logs" %
+                                     (self.dbreplica.id))
     
     def _do_no_slave_purge(self):
         master_binlogs = self.master_handler.binlogs_sorted()
@@ -90,26 +93,28 @@ class ReplicaWorker(threading.Thread):
         binlog_length = len(master_binlogs)
         if binlog_window + 1 < binlog_length:
             target_binlog = master_binlogs[binlog_length-binlog_window-1]
-            self.logger.info(("start no slave purging, " +
+            self.logger.info(("%s start no slave purging, " +
                               "earliest_master_binlog %s, " +
                               "target_master_binlog %s, " +
                               "latest_master_binlog %s") %
-                             (master_binlogs[0][1],
+                             (self.dbreplica.id,
+                              master_binlogs[0][1],
                               target_binlog[1],
                               master_binlogs[binlog_length-1][1]))
             self.master_handler.purge(target_binlog[1])
         else:
-            self.logger.info(("skip no slave purging, " +
+            self.logger.info(("%s skip no slave purging, " +
                               "earliest_master_binlog %s, " +
                               "latest_master_binlog %s, " +
                               "binlog window %s") %
-                             (master_binlogs[0][1],
+                             (self.dbreplica.id,
+                              master_binlogs[0][1],
                               master_binlogs[binlog_length-1][1],
                               binlog_window))
     
     def _do_purge(self, no_slave_purge):
         if len(self.slaves) <= 0 and no_slave_purge == 0:
-            self.logger.info("skip purge, no slave")
+            self.logger.info("%s skip purge, no slave" % self.dbreplica.id)
         elif len(self.slaves) <= 0 and no_slave_purge != 0:
             self._do_no_slave_purge()    
         else:
@@ -119,31 +124,34 @@ class ReplicaWorker(threading.Thread):
              earliest_master_binlog,
              latest_master_binlog) = self._target_master_binlog(slave_binlog)
             if not skip:
-                self.logger.info(("start purging, " +
+                self.logger.info(("%s start purging, " +
                                   "earliest_slave_binlog %s, " +
                                   "earliest_master_binlog %s, " +
                                   "lateset_master_binlog %s, " +
                                   "target_master_binlog %s") %
-                                 (slave_binlog[1], 
+                                 (self.dbreplica.id,
+                                  slave_binlog[1], 
                                   earliest_master_binlog[1],
                                   latest_master_binlog[1],
                                   target_master_binlog[1]))
                 self.master_handler.purge(target_master_binlog[1])
                 self.logger.info("binary log successfully purged")
             else:
-                self.logger.info(("skip purge, "+
+                self.logger.info(("%s skip purge, "+
                                   "earliest_slave_binlog %s, " +
                                   "earliest_master_binlog %s, " +
                                   "latest_master_binlog %s, " +
                                   "binlog_window %s") %
-                                 (slave_binlog[1],
+                                 (self.dbreplica.id,
+                                  slave_binlog[1],
                                   earliest_master_binlog[1],                                  
                                   latest_master_binlog[1],
                                   self.dbreplica.binlog_window))
     
     def purge(self):
         if not self.lock.acquire(False):
-            raise ReplicaWorkerException("another purge is running")
+            raise ReplicaWorkerException("%s another purge is running" % 
+                                         (self.dbreplica.id))
         else:
             try:
                 self._do_purge(1)
@@ -162,7 +170,7 @@ class ReplicaWorker(threading.Thread):
         if self.slaves.has_key(slave_id):
             return self.slaves_handler[slave_id].status()
         else:
-            raise ReplicaWorkerException("no such slave")
+            raise ReplicaWorkerException("%s no such slave" % self.dbreplica.id)
         
     def stop(self):
         self.lock.acquire()
@@ -180,7 +188,8 @@ class ReplicaWorker(threading.Thread):
                     self.lock.release()
                 except Exception as e:
                     self.lock.release()
-                    self.logger.error("run purge error: %s" % str(e))
+                    self.logger.error("%s run purge error: %s" % 
+                                      (self.dbreplica.id, str(e)))
             else:
                 self.logger.info("worker %s stopped" % self.dbreplica.id)                
                 break
