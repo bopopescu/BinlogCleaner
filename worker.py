@@ -36,15 +36,15 @@ class ReplicaWorker(threading.Thread):
             slave_ids = json.loads(self.dbreplica.slaves)
         master = self.dbinstance_controller.get(master_id)
         if master is None:
-            raise ReplicaWorkerException("%s no master %s record" % 
-                                         (self.dbreplica.id, master_id))
+            raise Exception("%s no master %s record" % 
+                            (self.dbreplica.id, master_id))
         self.master = master
         self.slaves = {}
         for slave_id in slave_ids:
             slave = self.dbinstance_controller.get(slave_id)
             if slave is None:
-                raise ReplicaWorkerException("%s no slave %s record" % 
-                                             (self.dbreplica.id, slave_id))
+                raise Exception("%s no slave %s record" % 
+                                (self.dbreplica.id, slave_id))
             self.slaves[slave_id] = slave
     
     def _init_handler(self):
@@ -83,9 +83,9 @@ class ReplicaWorker(threading.Thread):
                             None,
                             master_binlogs[0],
                             master_binlogs[binlog_length - 1])
-        raise ReplicaWorkerException("%s slave binary log not" +
-                                     " in master binary logs" %
-                                     (self.dbreplica.id))
+        raise Exception("%s slave binary log not" +
+                        " in master binary logs" %
+                        (self.dbreplica.id))
     
     def _do_no_slave_purge(self):
         master_binlogs = self.master_handler.binlogs_sorted()
@@ -150,8 +150,8 @@ class ReplicaWorker(threading.Thread):
     
     def purge(self):
         if not self.lock.acquire(False):
-            raise ReplicaWorkerException("%s another purge is running" % 
-                                         (self.dbreplica.id))
+            raise Exception("%s another purge is running" % 
+                            (self.dbreplica.id))
         else:
             try:
                 self._do_purge(1)
@@ -170,7 +170,7 @@ class ReplicaWorker(threading.Thread):
         if self.slaves.has_key(slave_id):
             return self.slaves_handler[slave_id].status()
         else:
-            raise ReplicaWorkerException("%s no such slave" % self.dbreplica.id)
+            raise Exception("%s no such slave" % self.dbreplica.id)
         
     def stop(self):
         self.lock.acquire()
@@ -276,12 +276,3 @@ class ReplicaSlaveHandler():
         cursor.close()
         connect.close()
         return row
-    
-
-class ReplicaWorkerException(Exception):
-    
-    def __init__(self, value):
-        self.value = value
-     
-    def __str__(self):
-        return repr(self.value)
