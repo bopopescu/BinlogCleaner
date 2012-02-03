@@ -83,8 +83,8 @@ class ReplicaWorker(threading.Thread):
                             None,
                             master_binlogs[0],
                             master_binlogs[binlog_length - 1])
-        raise Exception("%s slave binary log not" +
-                        " in master binary logs" %
+        raise Exception(("%s slave binary log not" +
+                        " in master binary logs") %
                         (self.dbreplica.id))
     
     def _do_no_slave_purge(self):
