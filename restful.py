@@ -78,22 +78,22 @@ class DBReplicaRestful():
         self.workers = {}
         dbreplicas = self.controller.get_all()
         for dbreplica in dbreplicas:
-            worker = ReplicaWorker(self.persistence, dbreplica)
+            worker = ReplicaWorker(self.persistence, dbreplica, self.config)
             worker.start()
             self.workers[dbreplica.id] = worker        
         
     @cherrypy.expose
     @Helper.restful
-    def add(self, replica_id, master, slaves, 
+    def add(self, replica_id, name, master, slaves, 
             check_period=60, binlog_window=0, no_slave_purge=1):
         if self.workers.has_key(replica_id):
             raise Exception("duplicate replication")
         else:
-            dbreplica = DBReplica(replica_id, master, slaves, 
+            dbreplica = DBReplica(replica_id, name, master, slaves, 
                                   int(check_period), 
                                   int(binlog_window),
                                   int(no_slave_purge))
-            worker = ReplicaWorker(self.persistence, dbreplica)
+            worker = ReplicaWorker(self.persistence, dbreplica, self.config)
             worker.start()
             self.workers[replica_id] = worker
             self.controller.add(dbreplica)            
@@ -121,7 +121,8 @@ class DBReplicaRestful():
             self.controller.add_slave(replica_id, slave_id)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence, 
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"
@@ -139,7 +140,8 @@ class DBReplicaRestful():
             self.controller.add_slaves(replica_id,slaves)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence, 
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"        
@@ -153,7 +155,8 @@ class DBReplicaRestful():
             self.controller.del_slave(replica_id, slave_id)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence,
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"        
@@ -168,7 +171,8 @@ class DBReplicaRestful():
                                                 int(check_period))
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence, 
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"
@@ -183,7 +187,8 @@ class DBReplicaRestful():
                                                  int(binlog_window))
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence,
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"
@@ -198,7 +203,8 @@ class DBReplicaRestful():
                                                   int(no_slave_purge))
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence,
-                                   self.controller.get(replica_id))
+                                   self.controller.get(replica_id),
+                                   self.config)
             worker.start()
             self.workers[replica_id] = worker            
             return "ok"        

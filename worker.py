@@ -4,10 +4,15 @@ Created on 2011-12-14
 @author: frank
 '''
 
+import smtplib
 import json
 import threading
 import logging
 import time
+import traceback
+
+from datetime import datetime
+from email.mime.text import MIMEText
 
 import MySQLdb
 
@@ -16,8 +21,9 @@ from controller import DBInstanceController
 
 class ReplicaWorker(threading.Thread):
     
-    def __init__(self, persistence, dbreplica):
+    def __init__(self, persistence, dbreplica, config):
         threading.Thread.__init__(self)
+        self.config = config
         self.logger = logging.getLogger("cleaner")
         self.lock = threading.Lock()
         self.stopped = False
@@ -26,6 +32,9 @@ class ReplicaWorker(threading.Thread):
         self.dbinstance_controller = DBInstanceController(persistence)
         self._init_replica()
         self._init_handler()
+        self.monitor = ReplicaMonitor(self.config, self.dbreplica,
+                                      self.master_handler,
+                                      self.slaves_handler)
     
     
     def _init_replica(self):
@@ -37,14 +46,14 @@ class ReplicaWorker(threading.Thread):
         master = self.dbinstance_controller.get(master_id)
         if master is None:
             raise Exception("%s no master %s record" % 
-                            (self.dbreplica.id, master_id))
+                            (self.dbreplica.name, master_id))
         self.master = master
         self.slaves = {}
         for slave_id in slave_ids:
             slave = self.dbinstance_controller.get(slave_id)
             if slave is None:
                 raise Exception("%s no slave %s record" % 
-                                (self.dbreplica.id, slave_id))
+                                (self.dbreplica.name, slave_id))
             self.slaves[slave_id] = slave
     
     def _init_handler(self):
@@ -85,7 +94,7 @@ class ReplicaWorker(threading.Thread):
                             master_binlogs[binlog_length - 1])
         raise Exception(("%s slave binary log not" +
                         " in master binary logs") %
-                        (self.dbreplica.id))
+                        (self.dbreplica.name))
     
     def _do_no_slave_purge(self):
         master_binlogs = self.master_handler.binlogs_sorted()
@@ -97,7 +106,7 @@ class ReplicaWorker(threading.Thread):
                               "earliest_master_binlog %s, " +
                               "target_master_binlog %s, " +
                               "latest_master_binlog %s") %
-                             (self.dbreplica.id,
+                             (self.dbreplica.name,
                               master_binlogs[0][1],
                               target_binlog[1],
                               master_binlogs[binlog_length-1][1]))
@@ -107,14 +116,14 @@ class ReplicaWorker(threading.Thread):
                               "earliest_master_binlog %s, " +
                               "latest_master_binlog %s, " +
                               "binlog window %s") %
-                             (self.dbreplica.id,
+                             (self.dbreplica.name,
                               master_binlogs[0][1],
                               master_binlogs[binlog_length-1][1],
                               binlog_window))
     
     def _do_purge(self, no_slave_purge):
         if len(self.slaves) <= 0 and no_slave_purge == 0:
-            self.logger.info("%s skip purge, no slave" % self.dbreplica.id)
+            self.logger.info("%s skip purge, no slave" % self.dbreplica.name)
         elif len(self.slaves) <= 0 and no_slave_purge != 0:
             self._do_no_slave_purge()    
         else:
@@ -129,7 +138,7 @@ class ReplicaWorker(threading.Thread):
                                   "earliest_master_binlog %s, " +
                                   "lateset_master_binlog %s, " +
                                   "target_master_binlog %s") %
-                                 (self.dbreplica.id,
+                                 (self.dbreplica.name,
                                   slave_binlog[1], 
                                   earliest_master_binlog[1],
                                   latest_master_binlog[1],
@@ -142,7 +151,7 @@ class ReplicaWorker(threading.Thread):
                                   "earliest_master_binlog %s, " +
                                   "latest_master_binlog %s, " +
                                   "binlog_window %s") %
-                                 (self.dbreplica.id,
+                                 (self.dbreplica.name,
                                   slave_binlog[1],
                                   earliest_master_binlog[1],                                  
                                   latest_master_binlog[1],
@@ -151,7 +160,7 @@ class ReplicaWorker(threading.Thread):
     def purge(self):
         if not self.lock.acquire(False):
             raise Exception("%s another purge is running" % 
-                            (self.dbreplica.id))
+                            (self.dbreplica.name))
         else:
             try:
                 self._do_purge(1)
@@ -170,15 +179,17 @@ class ReplicaWorker(threading.Thread):
         if self.slaves.has_key(slave_id):
             return self.slaves_handler[slave_id].status()
         else:
-            raise Exception("%s no such slave" % self.dbreplica.id)
+            raise Exception("%s no such slave" % self.dbreplica.name)
         
     def stop(self):
         self.lock.acquire()
         self.stopped = True
+        self.monitor.stop()
         self.lock.release()   
         
     def run(self):
-        self.logger.info("worker %s started" % self.dbreplica.id)
+        self.logger.info("worker %s started" % self.dbreplica.name)
+        self.monitor.start()
         while True:
             time.sleep(self.dbreplica.check_period)
             if not self.stopped:
@@ -188,12 +199,128 @@ class ReplicaWorker(threading.Thread):
                     self.lock.release()
                 except Exception as e:
                     self.lock.release()
+                    self.monitor.send_mail("purge error " + str(e), traceback.format_exc())
                     self.logger.error("%s run purge error: %s" % 
-                                      (self.dbreplica.id, str(e)))
+                                      (self.dbreplica.name, str(e)))
             else:
-                self.logger.info("worker %s stopped" % self.dbreplica.id)                
+                self.logger.info("worker %s stopped" % self.dbreplica.name)         
                 break
+        if not self.monitor.isstopped():
+            self.monitor.stop()
 
+class ReplicaMonitor(threading.Thread):
+    
+    def __init__(self, config, dbreplica,
+                 master_handler, slaves_handler):
+        threading.Thread.__init__(self)
+        self.config = config
+        self.logger = logging.getLogger("cleaner")
+        self.dbreplica = dbreplica
+        self.master_handler = master_handler
+        self.slaves_handler = slaves_handler
+        self.stopped = False
+    
+    def run(self):
+        self.logger.info("monitor %s is started" % self.dbreplica.name)
+        while True:
+            time.sleep(self.config.monitor_check_period)
+            if not self.stopped:
+                self._check()
+            else:
+                break
+        self.logger.info("monitor %s is stopped" % self.dbreplica.name)
+    
+    def stop(self):
+        self.stopped = True
+        
+    def isstopped(self):
+        return self.stopped
+   
+    def send_mail(self, short_msg, tb):
+        title, msg = self._error_mail(self.dbreplica.name, "", short_msg, tb)
+        self._send_mail(title, msg)
+
+    def _check(self):
+        self._check_master()
+        self._check_slaves()
+        
+    def _check_master(self):
+        try:
+            status = self.master_handler.status()
+            self._check_master_status(status)
+        except Exception as e:
+            tb = traceback.format_exc()
+            title,msg = self._error_mail(self.dbreplica.name,
+                                         "master "+ self.dbreplica.master,
+                                         str(e), tb)
+            self._send_mail(title, msg)
+            self.logger.error("check master error\n" + msg)
+
+    def _check_master_status(self, stats):
+        pass
+    
+    def _check_slaves(self):
+        for slave in self.slaves_handler:
+            try:
+                slave_handler = self.slaves_handler[slave]
+                status = slave_handler.status()
+                flag,what = self._check_slave_status(status)
+                if not flag:
+                    info = ""
+                    keylist = status.keys()
+                    keylist.sort()
+                    for key in keylist:
+                        info = info + "%s: %s\n" % (key, status[key])
+                    title, msg = self._error_mail(self.dbreplica.name, 
+                                                  "slave "+ slave,
+                                                  what, info)
+                    self._send_mail(title, msg)
+                    self.logger.error("check slave error\n" + msg)
+            except Exception as e:
+                tb = traceback.format_exc()
+                title,msg = self._error_mail(self.dbreplica.name, 
+                                             "slave " + slave, 
+                                             str(e), tb)
+                self._send_mail(title, msg)
+                self.logger.error("check slave error\n" + msg)
+    
+    def _check_slave_status(self, status):
+        if status['Last_IO_Errno'] != 0:
+            return False,"IO error"
+        if status['Last_SQL_Errno'] != 0:
+            return False, 'SQL error'
+        
+        return True,'ok'
+        
+ 
+    def _error_mail(self, name, db, msg, info):
+        title = "%s %s %s" % (name, db, msg)
+        msg = ("title: %s\n" % title +
+               "timestamp: %d\n" % int(time.time()) +
+               "date: %s\n" % datetime.now().strftime("%H:%M:%S %d/%m/%Y") +
+               "---------------------information---------------------\n%s" % info)
+        return title,msg        
+            
+    
+    def _mail_msg(self, sender, recievers, title, msg):
+        text = MIMEText(msg)
+        text["Subject"] = title
+        text["From"] = sender
+        text["To"] = ";".join(recievers)
+        return text.as_string()
+    
+    def _send_mail(self, title, msg):
+        try:
+            client = smtplib.SMTP()
+            client.connect(self.config.mail_host, self.config.mail_port)
+            client.login(self.config.mail_sender, self.config.mail_passwd)
+            client.sendmail(self.config.mail_sender, self.config.mail_recievers,
+                            self._mail_msg(self.config.mail_sender,
+                                           self.config.mail_recievers,
+                                           title, msg))
+            client.close()
+        except Exception as e:
+            self.logger.error("send mail error: " + traceback.format_exc())        
 
 class ReplicaMasterHandler():
     

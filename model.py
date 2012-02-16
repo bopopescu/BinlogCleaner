@@ -51,6 +51,8 @@ class DBReplica(ORMBase):
                            nullable=False,
                            unique=True, 
                            primary_key=True)
+    name = sqlalchemy.Column(sqlalchemy.Text,
+                             nullable=False)
     master = sqlalchemy.Column(sqlalchemy.String(64),
                                nullable = False)
     slaves = sqlalchemy.Column(sqlalchemy.Text,
@@ -62,11 +64,12 @@ class DBReplica(ORMBase):
     no_slave_purge = sqlalchemy.Column(sqlalchemy.Integer,
                                        nullable=False)
     
-    def __init__(self, id, master, slaves, 
+    def __init__(self, id, name, master, slaves, 
                  check_period = 60,
                  binlog_window = 0,
                  no_slave_purge = 1):
         self.id = id
+        self.name = name        
         self.master = master
         self.slaves = slaves
         self.check_period = check_period
