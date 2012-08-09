@@ -221,7 +221,7 @@ class ReplicaMonitor(threading.Thread):
         self.stopped = False
         self._init_monitor_status()
 
-    def _init_monitor_status():
+    def _init_monitor_status(self):
         self.purge_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
         self.master_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
         self.slaves_status = {}
