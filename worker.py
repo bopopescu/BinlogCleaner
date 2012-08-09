@@ -249,7 +249,7 @@ class ReplicaMonitor(threading.Thread):
             title, msg = self._error_mail(self.dbreplica.name, "", short_msg, tb, self.purge_status["error_repeats"])
             self._send_mail(title, msg)
 
-    def _should_send_mail(status, error):
+    def _should_send_mail(self, status, error):
         should_send_mail = False
         if status["last_error"] == error:
             status["error_repeats"] = status["error_repeats"] + 1
