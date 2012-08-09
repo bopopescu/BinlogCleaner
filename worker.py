@@ -219,7 +219,15 @@ class ReplicaMonitor(threading.Thread):
         self.master_handler = master_handler
         self.slaves_handler = slaves_handler
         self.stopped = False
-    
+        self._init_monitor_status()
+
+    def _init_monitor_status():
+        self.purge_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
+        self.master_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
+        self.slaves_status = {}
+        for slave in self.slaves_handler:
+            self.slaves_status[slave] = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
+
     def run(self):
         self.logger.info("monitor %s is started" % self.dbreplica.name)
         while True:
@@ -237,8 +245,22 @@ class ReplicaMonitor(threading.Thread):
         return self.stopped
    
     def send_mail(self, short_msg, tb):
-        title, msg = self._error_mail(self.dbreplica.name, "", short_msg, tb)
-        self._send_mail(title, msg)
+        if self._should_send_mail(self.purge_status, short_msg):
+            title, msg = self._error_mail(self.dbreplica.name, "", short_msg, tb, self.purge_status["error_repeats"])
+            self._send_mail(title, msg)
+
+    def _should_send_mail(status, error):
+        should_send_mail = False
+        if status["last_error"] == error:
+            status["error_repeats"] = status["error_repeats"] + 1
+            should_send_mail = (status["error_repeats"] == status["send_mail_flag"])
+            status["send_mail_flag"] = (status["send_mail_flag"] << 1)
+        else:
+            status["last_error"] = error
+            status["error_repeats"] = 0
+            status["send_mail_flag"] = 1
+            should_send_mail = True
+        return should_send_mail
 
     def _check(self):
         self._check_master()
@@ -250,10 +272,11 @@ class ReplicaMonitor(threading.Thread):
             self._check_master_status(status)
         except Exception as e:
             tb = traceback.format_exc()
-            title,msg = self._error_mail(self.dbreplica.name,
-                                         "master "+ self.dbreplica.master,
-                                         str(e), tb)
-            self._send_mail(title, msg)
+            if self._should_send_mail(self.master_status, str(e)):
+                title,msg = self._error_mail(self.dbreplica.name,
+                                             "master "+ self.dbreplica.master,
+                                             str(e), tb, self.master_status["error_repeats"])
+                self._send_mail(title, msg)
             self.logger.error("check master error\n" + msg)
 
     def _check_master_status(self, stats):
@@ -271,17 +294,19 @@ class ReplicaMonitor(threading.Thread):
                     keylist.sort()
                     for key in keylist:
                         info = info + "%s: %s\n" % (key, status[key])
-                    title, msg = self._error_mail(self.dbreplica.name, 
-                                                  "slave "+ slave,
-                                                  what, info)
-                    self._send_mail(title, msg)
+                    if self._should_send_mail(self.slaves_status[slave], what):
+                        title, msg = self._error_mail(self.dbreplica.name, 
+                                                      "slave "+ slave,
+                                                      what, info, self.slaves_status[slave]["error_repeats"])
+                        self._send_mail(title, msg)
                     self.logger.error("check slave error\n" + msg)
             except Exception as e:
                 tb = traceback.format_exc()
-                title,msg = self._error_mail(self.dbreplica.name, 
-                                             "slave " + slave, 
-                                             str(e), tb)
-                self._send_mail(title, msg)
+                if self._should_send_mail(self.slaves_status[slave], str(e)):
+                    title,msg = self._error_mail(self.dbreplica.name, 
+                                                 "slave " + slave, 
+                                                 str(e), tb, self.slaves_status[slave]["error_repeats"])  
+                    self._send_mail(title, msg)
                 self.logger.error("check slave error\n" + msg)
     
     def _check_slave_status(self, status):
@@ -293,11 +318,12 @@ class ReplicaMonitor(threading.Thread):
         return True,'ok'
         
  
-    def _error_mail(self, name, db, msg, info):
+    def _error_mail(self, name, db, msg, info, repeat):
         title = "%s %s %s" % (name, db, msg)
         msg = ("title: %s\n" % title +
                "timestamp: %d\n" % int(time.time()) +
                "date: %s\n" % datetime.now().strftime("%H:%M:%S %d/%m/%Y") +
+               "repeat: %d\n" % repeat +
                "---------------------information---------------------\n%s" % info)
         return title,msg        
             
