@@ -272,13 +272,12 @@ class ReplicaMonitor(threading.Thread):
             self._check_master_status(status)
         except Exception as e:
             tb = traceback.format_exc()
-            msg = ""
             if self._should_send_mail(self.master_status, str(e)):
                 title,msg = self._error_mail(self.dbreplica.name,
                                              "master "+ self.dbreplica.master,
                                              str(e), tb, self.master_status["error_repeats"])
                 self._send_mail(title, msg)
-            self.logger.error("check master error\n" + msg)
+                self.logger.error("check master error\n" + msg)
 
     def _check_master_status(self, stats):
         pass
@@ -295,22 +294,20 @@ class ReplicaMonitor(threading.Thread):
                     keylist.sort()
                     for key in keylist:
                         info = info + "%s: %s\n" % (key, status[key])
-                    msg = ""
                     if self._should_send_mail(self.slaves_status[slave], what):
                         title, msg = self._error_mail(self.dbreplica.name, 
                                                       "slave "+ slave,
                                                       what, info, self.slaves_status[slave]["error_repeats"])
                         self._send_mail(title, msg)
-                    self.logger.error("check slave error\n" + msg)
+                        self.logger.error("check slave error\n" + msg)
             except Exception as e:
                 tb = traceback.format_exc()
-                msg = ""
                 if self._should_send_mail(self.slaves_status[slave], str(e)):
                     title,msg = self._error_mail(self.dbreplica.name, 
                                                  "slave " + slave, 
                                                  str(e), tb, self.slaves_status[slave]["error_repeats"])  
                     self._send_mail(title, msg)
-                self.logger.error("check slave error\n" + msg)
+                    self.logger.error("check slave error\n" + msg)
     
     def _check_slave_status(self, status):
         if status['Last_IO_Errno'] != 0:
