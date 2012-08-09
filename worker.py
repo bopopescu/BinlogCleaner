@@ -254,7 +254,8 @@ class ReplicaMonitor(threading.Thread):
         if status["last_error"] == error:
             status["error_repeats"] = status["error_repeats"] + 1
             should_send_mail = (status["error_repeats"] == status["send_mail_flag"])
-            status["send_mail_flag"] = (status["send_mail_flag"] << 1)
+            if should_send_mail:
+                status["send_mail_flag"] = (status["send_mail_flag"] << 1)
         else:
             status["last_error"] = error
             status["error_repeats"] = 0
