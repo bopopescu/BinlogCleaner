@@ -272,6 +272,7 @@ class ReplicaMonitor(threading.Thread):
             self._check_master_status(status)
         except Exception as e:
             tb = traceback.format_exc()
+            msg = ""
             if self._should_send_mail(self.master_status, str(e)):
                 title,msg = self._error_mail(self.dbreplica.name,
                                              "master "+ self.dbreplica.master,
@@ -294,6 +295,7 @@ class ReplicaMonitor(threading.Thread):
                     keylist.sort()
                     for key in keylist:
                         info = info + "%s: %s\n" % (key, status[key])
+                    msg = ""
                     if self._should_send_mail(self.slaves_status[slave], what):
                         title, msg = self._error_mail(self.dbreplica.name, 
                                                       "slave "+ slave,
@@ -302,6 +304,7 @@ class ReplicaMonitor(threading.Thread):
                     self.logger.error("check slave error\n" + msg)
             except Exception as e:
                 tb = traceback.format_exc()
+                msg = ""
                 if self._should_send_mail(self.slaves_status[slave], str(e)):
                     title,msg = self._error_mail(self.dbreplica.name, 
                                                  "slave " + slave, 
