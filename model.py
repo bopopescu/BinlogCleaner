@@ -53,25 +53,25 @@ class DBReplica(ORMBase):
                            primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.Text,
                              nullable=False)
-    master = sqlalchemy.Column(sqlalchemy.String(64),
+    main = sqlalchemy.Column(sqlalchemy.String(64),
                                nullable = False)
-    slaves = sqlalchemy.Column(sqlalchemy.Text,
+    subordinates = sqlalchemy.Column(sqlalchemy.Text,
                                nullable=False)
     check_period = sqlalchemy.Column(sqlalchemy.Integer,
                                      nullable=False)
     binlog_window = sqlalchemy.Column(sqlalchemy.Integer,
                                      nullable=False)
-    no_slave_purge = sqlalchemy.Column(sqlalchemy.Integer,
+    no_subordinate_purge = sqlalchemy.Column(sqlalchemy.Integer,
                                        nullable=False)
     
-    def __init__(self, id, name, master, slaves, 
+    def __init__(self, id, name, main, subordinates, 
                  check_period = 60,
                  binlog_window = 0,
-                 no_slave_purge = 1):
+                 no_subordinate_purge = 1):
         self.id = id
         self.name = name        
-        self.master = master
-        self.slaves = slaves
+        self.main = main
+        self.subordinates = subordinates
         self.check_period = check_period
         self.binlog_window = binlog_window
-        self.no_slave_purge = no_slave_purge
+        self.no_subordinate_purge = no_subordinate_purge

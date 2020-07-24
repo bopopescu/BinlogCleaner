@@ -84,15 +84,15 @@ class DBReplicaRestful():
         
     @cherrypy.expose
     @Helper.restful
-    def add(self, replica_id, name, master, slaves, 
-            check_period=60, binlog_window=0, no_slave_purge=1):
+    def add(self, replica_id, name, main, subordinates, 
+            check_period=60, binlog_window=0, no_subordinate_purge=1):
         if self.workers.has_key(replica_id):
             raise Exception("duplicate replication")
         else:
-            dbreplica = DBReplica(replica_id, name, master, slaves, 
+            dbreplica = DBReplica(replica_id, name, main, subordinates, 
                                   int(check_period), 
                                   int(binlog_window),
-                                  int(no_slave_purge))
+                                  int(no_subordinate_purge))
             worker = ReplicaWorker(self.persistence, dbreplica, self.config)
             worker.start()
             self.workers[replica_id] = worker
@@ -112,13 +112,13 @@ class DBReplicaRestful():
     
     @cherrypy.expose
     @Helper.restful
-    def add_slave(self, replica_id, slave_id):
+    def add_subordinate(self, replica_id, subordinate_id):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
-        elif self.dbinstance_controller.get(slave_id) is None:
-            raise Exception("no %s slave instance" % slave_id)
+        elif self.dbinstance_controller.get(subordinate_id) is None:
+            raise Exception("no %s subordinate instance" % subordinate_id)
         else:        
-            self.controller.add_slave(replica_id, slave_id)
+            self.controller.add_subordinate(replica_id, subordinate_id)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence, 
                                    self.controller.get(replica_id),
@@ -129,15 +129,15 @@ class DBReplicaRestful():
         
     @cherrypy.expose
     @Helper.restful
-    def add_slaves(self, replica_id, slave_ids):
+    def add_subordinates(self, replica_id, subordinate_ids):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:
-            slaves = json.loads(slave_ids)
-            for slave_id in slaves:
-                if self.dbinstance_controller.get(slave_id) is None:
-                    raise Exception("no %s slave instance" % slave_id)
-            self.controller.add_slaves(replica_id,slaves)
+            subordinates = json.loads(subordinate_ids)
+            for subordinate_id in subordinates:
+                if self.dbinstance_controller.get(subordinate_id) is None:
+                    raise Exception("no %s subordinate instance" % subordinate_id)
+            self.controller.add_subordinates(replica_id,subordinates)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence, 
                                    self.controller.get(replica_id),
@@ -148,11 +148,11 @@ class DBReplicaRestful():
 
     @cherrypy.expose
     @Helper.restful
-    def del_slave(self, replica_id, slave_id):
+    def del_subordinate(self, replica_id, subordinate_id):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:        
-            self.controller.del_slave(replica_id, slave_id)
+            self.controller.del_subordinate(replica_id, subordinate_id)
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence,
                                    self.controller.get(replica_id),
@@ -195,12 +195,12 @@ class DBReplicaRestful():
         
     @cherrypy.expose
     @Helper.restful    
-    def update_no_slave_purge(self, replica_id, no_slave_purge):
+    def update_no_subordinate_purge(self, replica_id, no_subordinate_purge):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:
-            self.controller.update_no_slave_purge(replica_id, 
-                                                  int(no_slave_purge))
+            self.controller.update_no_subordinate_purge(replica_id, 
+                                                  int(no_subordinate_purge))
             self.workers[replica_id].stop()
             worker = ReplicaWorker(self.persistence,
                                    self.controller.get(replica_id),
@@ -220,27 +220,27 @@ class DBReplicaRestful():
         
     @cherrypy.expose
     @Helper.restful
-    def master_binlogs(self, replica_id):
+    def main_binlogs(self, replica_id):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:
-            return self.workers[replica_id].master_binlogs()
+            return self.workers[replica_id].main_binlogs()
         
     @cherrypy.expose
     @Helper.restful
-    def master_status(self, replica_id):
+    def main_status(self, replica_id):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:
-            return self.workers[replica_id].master_status()
+            return self.workers[replica_id].main_status()
         
     @cherrypy.expose
     @Helper.restful
-    def slave_status(self, replica_id, slave_id):
+    def subordinate_status(self, replica_id, subordinate_id):
         if not self.workers.has_key(replica_id):
             raise Exception("replication not exist")
         else:
-            return self.workers[replica_id].slave_status(slave_id)
+            return self.workers[replica_id].subordinate_status(subordinate_id)
         
     @cherrypy.expose
     @Helper.restful

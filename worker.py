@@ -33,128 +33,128 @@ class ReplicaWorker(threading.Thread):
         self._init_replica()
         self._init_handler()
         self.monitor = ReplicaMonitor(self.config, self.dbreplica,
-                                      self.master_handler,
-                                      self.slaves_handler)
+                                      self.main_handler,
+                                      self.subordinates_handler)
     
     
     def _init_replica(self):
-        master_id = self.dbreplica.master
-        if self.dbreplica.slaves is None or len(self.dbreplica.slaves) == 0:
-            slave_ids = []
+        main_id = self.dbreplica.main
+        if self.dbreplica.subordinates is None or len(self.dbreplica.subordinates) == 0:
+            subordinate_ids = []
         else:
-            slave_ids = json.loads(self.dbreplica.slaves)
-        master = self.dbinstance_controller.get(master_id)
-        if master is None:
-            raise Exception("%s no master %s record" % 
-                            (self.dbreplica.name, master_id))
-        self.master = master
-        self.slaves = {}
-        for slave_id in slave_ids:
-            slave = self.dbinstance_controller.get(slave_id)
-            if slave is None:
-                raise Exception("%s no slave %s record" % 
-                                (self.dbreplica.name, slave_id))
-            self.slaves[slave_id] = slave
+            subordinate_ids = json.loads(self.dbreplica.subordinates)
+        main = self.dbinstance_controller.get(main_id)
+        if main is None:
+            raise Exception("%s no main %s record" % 
+                            (self.dbreplica.name, main_id))
+        self.main = main
+        self.subordinates = {}
+        for subordinate_id in subordinate_ids:
+            subordinate = self.dbinstance_controller.get(subordinate_id)
+            if subordinate is None:
+                raise Exception("%s no subordinate %s record" % 
+                                (self.dbreplica.name, subordinate_id))
+            self.subordinates[subordinate_id] = subordinate
     
     def _init_handler(self):
-        self.master_handler = ReplicaMasterHandler(self.master)
-        self.slaves_handler = {}
-        for slave_id in self.slaves.keys():
-            slave = self.slaves[slave_id]
-            self.slaves_handler[slave_id] = ReplicaSlaveHandler(slave)
+        self.main_handler = ReplicaMainHandler(self.main)
+        self.subordinates_handler = {}
+        for subordinate_id in self.subordinates.keys():
+            subordinate = self.subordinates[subordinate_id]
+            self.subordinates_handler[subordinate_id] = ReplicaSubordinateHandler(subordinate)
     
-    def _earliest_slave_binlog(self):
+    def _earliest_subordinate_binlog(self):
         earliest_log_index = -1
         earliest_log_name = None
-        for slave_id in self.slaves_handler.keys():
-            slave_handler = self.slaves_handler[slave_id]
-            (log_index, log_name) = slave_handler.master_binlog()
+        for subordinate_id in self.subordinates_handler.keys():
+            subordinate_handler = self.subordinates_handler[subordinate_id]
+            (log_index, log_name) = subordinate_handler.main_binlog()
             if earliest_log_index < 0 or earliest_log_index > log_index:
                 earliest_log_index = log_index
                 earliest_log_name = log_name
         return (earliest_log_index, earliest_log_name)
             
-    def _target_master_binlog(self, earliest_slave_binlog):
-        slave_binlog_index = earliest_slave_binlog[0]
-        master_binlogs = self.master_handler.binlogs_sorted()
-        binlog_length = len(master_binlogs)
+    def _target_main_binlog(self, earliest_subordinate_binlog):
+        subordinate_binlog_index = earliest_subordinate_binlog[0]
+        main_binlogs = self.main_handler.binlogs_sorted()
+        binlog_length = len(main_binlogs)
         for i in range(binlog_length):
-            master_binlog_index = master_binlogs[i][0]
-            if slave_binlog_index == master_binlog_index:
+            main_binlog_index = main_binlogs[i][0]
+            if subordinate_binlog_index == main_binlog_index:
                 binlog_window = self.dbreplica.binlog_window
                 if i > binlog_window:
                     return (False, 
-                            master_binlogs[i - binlog_window],
-                            master_binlogs[0],
-                            master_binlogs[binlog_length - 1])
+                            main_binlogs[i - binlog_window],
+                            main_binlogs[0],
+                            main_binlogs[binlog_length - 1])
                 else:
                     return (True, 
                             None,
-                            master_binlogs[0],
-                            master_binlogs[binlog_length - 1])
-        raise Exception(("%s slave binary log not" +
-                        " in master binary logs") %
+                            main_binlogs[0],
+                            main_binlogs[binlog_length - 1])
+        raise Exception(("%s subordinate binary log not" +
+                        " in main binary logs") %
                         (self.dbreplica.name))
     
-    def _do_no_slave_purge(self):
-        master_binlogs = self.master_handler.binlogs_sorted()
+    def _do_no_subordinate_purge(self):
+        main_binlogs = self.main_handler.binlogs_sorted()
         binlog_window = self.dbreplica.binlog_window
-        binlog_length = len(master_binlogs)
+        binlog_length = len(main_binlogs)
         if binlog_window + 1 < binlog_length:
-            target_binlog = master_binlogs[binlog_length-binlog_window-1]
-            self.logger.info(("%s start no slave purging, " +
-                              "earliest_master_binlog %s, " +
-                              "target_master_binlog %s, " +
-                              "latest_master_binlog %s") %
+            target_binlog = main_binlogs[binlog_length-binlog_window-1]
+            self.logger.info(("%s start no subordinate purging, " +
+                              "earliest_main_binlog %s, " +
+                              "target_main_binlog %s, " +
+                              "latest_main_binlog %s") %
                              (self.dbreplica.name,
-                              master_binlogs[0][1],
+                              main_binlogs[0][1],
                               target_binlog[1],
-                              master_binlogs[binlog_length-1][1]))
-            self.master_handler.purge(target_binlog[1])
+                              main_binlogs[binlog_length-1][1]))
+            self.main_handler.purge(target_binlog[1])
         else:
-            self.logger.info(("%s skip no slave purging, " +
-                              "earliest_master_binlog %s, " +
-                              "latest_master_binlog %s, " +
+            self.logger.info(("%s skip no subordinate purging, " +
+                              "earliest_main_binlog %s, " +
+                              "latest_main_binlog %s, " +
                               "binlog window %s") %
                              (self.dbreplica.name,
-                              master_binlogs[0][1],
-                              master_binlogs[binlog_length-1][1],
+                              main_binlogs[0][1],
+                              main_binlogs[binlog_length-1][1],
                               binlog_window))
     
-    def _do_purge(self, no_slave_purge):
-        if len(self.slaves) <= 0 and no_slave_purge == 0:
-            self.logger.info("%s skip purge, no slave" % self.dbreplica.name)
-        elif len(self.slaves) <= 0 and no_slave_purge != 0:
-            self._do_no_slave_purge()    
+    def _do_purge(self, no_subordinate_purge):
+        if len(self.subordinates) <= 0 and no_subordinate_purge == 0:
+            self.logger.info("%s skip purge, no subordinate" % self.dbreplica.name)
+        elif len(self.subordinates) <= 0 and no_subordinate_purge != 0:
+            self._do_no_subordinate_purge()    
         else:
-            slave_binlog = self._earliest_slave_binlog()
+            subordinate_binlog = self._earliest_subordinate_binlog()
             (skip, 
-             target_master_binlog,
-             earliest_master_binlog,
-             latest_master_binlog) = self._target_master_binlog(slave_binlog)
+             target_main_binlog,
+             earliest_main_binlog,
+             latest_main_binlog) = self._target_main_binlog(subordinate_binlog)
             if not skip:
                 self.logger.info(("%s start purging, " +
-                                  "earliest_slave_binlog %s, " +
-                                  "earliest_master_binlog %s, " +
-                                  "lateset_master_binlog %s, " +
-                                  "target_master_binlog %s") %
+                                  "earliest_subordinate_binlog %s, " +
+                                  "earliest_main_binlog %s, " +
+                                  "lateset_main_binlog %s, " +
+                                  "target_main_binlog %s") %
                                  (self.dbreplica.name,
-                                  slave_binlog[1], 
-                                  earliest_master_binlog[1],
-                                  latest_master_binlog[1],
-                                  target_master_binlog[1]))
-                self.master_handler.purge(target_master_binlog[1])
+                                  subordinate_binlog[1], 
+                                  earliest_main_binlog[1],
+                                  latest_main_binlog[1],
+                                  target_main_binlog[1]))
+                self.main_handler.purge(target_main_binlog[1])
                 self.logger.info("binary log successfully purged")
             else:
                 self.logger.info(("%s skip purge, "+
-                                  "earliest_slave_binlog %s, " +
-                                  "earliest_master_binlog %s, " +
-                                  "latest_master_binlog %s, " +
+                                  "earliest_subordinate_binlog %s, " +
+                                  "earliest_main_binlog %s, " +
+                                  "latest_main_binlog %s, " +
                                   "binlog_window %s") %
                                  (self.dbreplica.name,
-                                  slave_binlog[1],
-                                  earliest_master_binlog[1],                                  
-                                  latest_master_binlog[1],
+                                  subordinate_binlog[1],
+                                  earliest_main_binlog[1],                                  
+                                  latest_main_binlog[1],
                                   self.dbreplica.binlog_window))
     
     def purge(self):
@@ -169,17 +169,17 @@ class ReplicaWorker(threading.Thread):
                 self.lock.release()
                 raise e
     
-    def master_binlogs(self):
-        return self.master_handler.binlogs()
+    def main_binlogs(self):
+        return self.main_handler.binlogs()
     
-    def master_status(self):
-        return self.master_handler.status()
+    def main_status(self):
+        return self.main_handler.status()
     
-    def slave_status(self, slave_id):
-        if self.slaves.has_key(slave_id):
-            return self.slaves_handler[slave_id].status()
+    def subordinate_status(self, subordinate_id):
+        if self.subordinates.has_key(subordinate_id):
+            return self.subordinates_handler[subordinate_id].status()
         else:
-            raise Exception("%s no such slave" % self.dbreplica.name)
+            raise Exception("%s no such subordinate" % self.dbreplica.name)
         
     def stop(self):
         self.lock.acquire()
@@ -195,7 +195,7 @@ class ReplicaWorker(threading.Thread):
             if not self.stopped:
                 self.lock.acquire()
                 try:
-                    self._do_purge(self.dbreplica.no_slave_purge)
+                    self._do_purge(self.dbreplica.no_subordinate_purge)
                     self.lock.release()
                 except Exception as e:
                     self.lock.release()
@@ -211,22 +211,22 @@ class ReplicaWorker(threading.Thread):
 class ReplicaMonitor(threading.Thread):
     
     def __init__(self, config, dbreplica,
-                 master_handler, slaves_handler):
+                 main_handler, subordinates_handler):
         threading.Thread.__init__(self)
         self.config = config
         self.logger = logging.getLogger("cleaner")
         self.dbreplica = dbreplica
-        self.master_handler = master_handler
-        self.slaves_handler = slaves_handler
+        self.main_handler = main_handler
+        self.subordinates_handler = subordinates_handler
         self.stopped = False
         self._init_monitor_status()
 
     def _init_monitor_status(self):
         self.purge_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
-        self.master_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
-        self.slaves_status = {}
-        for slave in self.slaves_handler:
-            self.slaves_status[slave] = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
+        self.main_status = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
+        self.subordinates_status = {}
+        for subordinate in self.subordinates_handler:
+            self.subordinates_status[subordinate] = {"last_error": None, "error_repeats": 0, "send_mail_flag": 1}
 
     def run(self):
         self.logger.info("monitor %s is started" % self.dbreplica.name)
@@ -264,53 +264,53 @@ class ReplicaMonitor(threading.Thread):
         return should_send_mail
 
     def _check(self):
-        self._check_master()
-        self._check_slaves()
+        self._check_main()
+        self._check_subordinates()
         
-    def _check_master(self):
+    def _check_main(self):
         try:
-            status = self.master_handler.status()
-            self._check_master_status(status)
+            status = self.main_handler.status()
+            self._check_main_status(status)
         except Exception as e:
             tb = traceback.format_exc()
-            if self._should_send_mail(self.master_status, str(e)):
+            if self._should_send_mail(self.main_status, str(e)):
                 title,msg = self._error_mail(self.dbreplica.name,
-                                             "master "+ self.dbreplica.master,
-                                             str(e), tb, self.master_status["error_repeats"])
+                                             "main "+ self.dbreplica.main,
+                                             str(e), tb, self.main_status["error_repeats"])
                 self._send_mail(title, msg)
-                self.logger.error("check master error\n" + msg)
+                self.logger.error("check main error\n" + msg)
 
-    def _check_master_status(self, stats):
+    def _check_main_status(self, stats):
         pass
     
-    def _check_slaves(self):
-        for slave in self.slaves_handler:
+    def _check_subordinates(self):
+        for subordinate in self.subordinates_handler:
             try:
-                slave_handler = self.slaves_handler[slave]
-                status = slave_handler.status()
-                flag,what = self._check_slave_status(status)
+                subordinate_handler = self.subordinates_handler[subordinate]
+                status = subordinate_handler.status()
+                flag,what = self._check_subordinate_status(status)
                 if not flag:
                     info = ""
                     keylist = status.keys()
                     keylist.sort()
                     for key in keylist:
                         info = info + "%s: %s\n" % (key, status[key])
-                    if self._should_send_mail(self.slaves_status[slave], what):
+                    if self._should_send_mail(self.subordinates_status[subordinate], what):
                         title, msg = self._error_mail(self.dbreplica.name, 
-                                                      "slave "+ slave,
-                                                      what, info, self.slaves_status[slave]["error_repeats"])
+                                                      "subordinate "+ subordinate,
+                                                      what, info, self.subordinates_status[subordinate]["error_repeats"])
                         self._send_mail(title, msg)
-                        self.logger.error("check slave error\n" + msg)
+                        self.logger.error("check subordinate error\n" + msg)
             except Exception as e:
                 tb = traceback.format_exc()
-                if self._should_send_mail(self.slaves_status[slave], str(e)):
+                if self._should_send_mail(self.subordinates_status[subordinate], str(e)):
                     title,msg = self._error_mail(self.dbreplica.name, 
-                                                 "slave " + slave, 
-                                                 str(e), tb, self.slaves_status[slave]["error_repeats"])  
+                                                 "subordinate " + subordinate, 
+                                                 str(e), tb, self.subordinates_status[subordinate]["error_repeats"])  
                     self._send_mail(title, msg)
-                    self.logger.error("check slave error\n" + msg)
+                    self.logger.error("check subordinate error\n" + msg)
     
-    def _check_slave_status(self, status):
+    def _check_subordinate_status(self, status):
         if status['Last_IO_Errno'] != 0:
             return False,"IO error"
         if status['Last_SQL_Errno'] != 0:
@@ -349,16 +349,16 @@ class ReplicaMonitor(threading.Thread):
         except Exception as e:
             self.logger.error("send mail error: " + traceback.format_exc())        
 
-class ReplicaMasterHandler():
+class ReplicaMainHandler():
     
-    def __init__(self, master):
-        self.master = master
+    def __init__(self, main):
+        self.main = main
         
     def _get_connect(self):
-        return MySQLdb.connect(host = self.master.host,
-                               port = self.master.port,
-                               user = self.master.user,
-                               passwd = self.master.passwd)        
+        return MySQLdb.connect(host = self.main.host,
+                               port = self.main.port,
+                               user = self.main.user,
+                               passwd = self.main.passwd)        
     
     def binlogs_sorted(self):
         connect = self._get_connect()
@@ -386,7 +386,7 @@ class ReplicaMasterHandler():
     def status(self):
         connect = self._get_connect()
         cursor = connect.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute("show master status")
+        cursor.execute("show main status")
         row = cursor.fetchone()
         cursor.close()
         connect.close()
@@ -400,23 +400,23 @@ class ReplicaMasterHandler():
         cursor.close()
         connect.close()
         
-class ReplicaSlaveHandler():
+class ReplicaSubordinateHandler():
     
-    def __init__(self, slave):
-        self.slave = slave
+    def __init__(self, subordinate):
+        self.subordinate = subordinate
     
     def _get_connect(self):
-        return MySQLdb.connect(host = self.slave.host,
-                               port = self.slave.port,
-                               user = self.slave.user,
-                               passwd = self.slave.passwd)
+        return MySQLdb.connect(host = self.subordinate.host,
+                               port = self.subordinate.port,
+                               user = self.subordinate.user,
+                               passwd = self.subordinate.passwd)
     
-    def master_binlog(self):
+    def main_binlog(self):
         connect = self._get_connect()
         cursor = connect.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute("show slave status")
+        cursor.execute("show subordinate status")
         row = cursor.fetchone()
-        log_name = row['Master_Log_File']
+        log_name = row['Main_Log_File']
         log_index = int(log_name[log_name.rfind(".")+1:len(log_name)])
         cursor.close()
         connect.close()
@@ -425,7 +425,7 @@ class ReplicaSlaveHandler():
     def status(self):
         connect = self._get_connect()
         cursor = connect.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute("show slave status")
+        cursor.execute("show subordinate status")
         row = cursor.fetchone()
         cursor.close()
         connect.close()

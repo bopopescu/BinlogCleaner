@@ -99,48 +99,48 @@ class DBReplicaController():
         finally:        
             session.close()  
         
-    def add_slave(self, replica_id, slave_id):
+    def add_subordinate(self, replica_id, subordinate_id):
         session = self.persistence.session()
         try:
             query = session.query(DBReplica)
             dbreplica = query.get(replica_id)
             if dbreplica is not None:
-                if dbreplica.slaves is None or len(dbreplica.slaves) == 0:
-                    slaves = set([])
+                if dbreplica.subordinates is None or len(dbreplica.subordinates) == 0:
+                    subordinates = set([])
                 else:
-                    slaves = set(json.loads(dbreplica.slaves))
-                slaves.add(slave_id)
-                dbreplica.slaves = json.dumps(list(slaves))
+                    subordinates = set(json.loads(dbreplica.subordinates))
+                subordinates.add(subordinate_id)
+                dbreplica.subordinates = json.dumps(list(subordinates))
                 session.commit()
         finally:
             session.close()
         
-    def add_slaves(self, replica_id, slave_ids):
+    def add_subordinates(self, replica_id, subordinate_ids):
         session = self.persistence.session()
         try:
             query = session.query(DBReplica)
             dbreplica = query.get(replica_id)
             if dbreplica is not None:
-                if dbreplica.slaves is None or len(dbreplica.slaves) == 0:
-                    slaves = set([])
+                if dbreplica.subordinates is None or len(dbreplica.subordinates) == 0:
+                    subordinates = set([])
                 else:
-                    slaves = set(json.loads(dbreplica.slaves))
-                for slave_id in slave_ids:
-                    slaves.add(slave_id)
-                dbreplica.slaves = json.dumps(list(slaves))
+                    subordinates = set(json.loads(dbreplica.subordinates))
+                for subordinate_id in subordinate_ids:
+                    subordinates.add(subordinate_id)
+                dbreplica.subordinates = json.dumps(list(subordinates))
                 session.commit()
         finally:
                 session.close()
             
-    def del_slave(self, replica_id, slave_id):
+    def del_subordinate(self, replica_id, subordinate_id):
         session = self.persistence.session()
         try:
             query = session.query(DBReplica)
             dbreplica = query.get(replica_id)
             if dbreplica is not None:
-                slaves = set(json.loads(dbreplica.slaves))
-                slaves.discard(slave_id)
-                dbreplica.slaves = json.dumps(list(slaves))
+                subordinates = set(json.loads(dbreplica.subordinates))
+                subordinates.discard(subordinate_id)
+                dbreplica.subordinates = json.dumps(list(subordinates))
                 session.commit()
         finally:
             session.close()        
@@ -167,13 +167,13 @@ class DBReplicaController():
         finally:
             session.close()
         
-    def update_no_slave_purge(self, replica_id, no_slave_purge):
+    def update_no_subordinate_purge(self, replica_id, no_subordinate_purge):
         session = self.persistence.session()
         try:
             query = session.query(DBReplica)
             dbreplica = query.get(replica_id)
             if dbreplica is not None:
-                dbreplica.no_slave_purge = no_slave_purge
+                dbreplica.no_subordinate_purge = no_subordinate_purge
                 session.commit()
         finally:
             session.close()       
